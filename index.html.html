@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gema Kegelapan - PS2 Horror Edition</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+
+        body {
+            background: #050505; display: flex; justify-content: center; align-items: center;
+            min-height: 100vh; font-family: 'VT323', monospace; overflow: hidden; color: #fff;
+            position: fixed; width: 100%; height: 100%;
+        }
+
+        #gameContainer {
+            position: relative; width: 100%; max-width: 1024px; height: 100vh; max-height: 700px;
+            box-shadow: 0 0 100px rgba(139, 0, 0, 0.5); border: 2px solid #330000;
+            background: #0a0a0a; overflow: hidden;
+        }
+
+        #gameCanvas {
+            display: block; width: 100%; height: 100%;
+            image-rendering: pixelated; image-rendering: -moz-crisp-edges; image-rendering: crisp-edges;
+        }
+
+        #bufferCanvas { display: none; }
+
+        /* CRT Effects */
+        #scanlines {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 50;
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.25) 50%, rgba(0,0,0,0.25));
+            background-size: 100% 4px; animation: scanlineMove 0.1s linear infinite;
+        }
+        @keyframes scanlineMove { 0% { background-position: 0 0; } 100% { background-position: 0 4px; } }
+
+        #crtOverlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 51;
+            box-shadow: inset 0 0 120px rgba(0,0,0,0.8);
+            background: radial-gradient(ellipse at center, transparent 0%, transparent 55%, rgba(0,0,0,0.5) 100%);
+        }
+
+        #rgbShift {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 52; mix-blend-mode: screen; opacity: 0.12;
+            background: linear-gradient(90deg, rgba(255,0,0,0.4) 0%, transparent 33%, transparent 66%, rgba(0,0,255,0.4) 100%);
+            animation: rgbFlicker 0.08s infinite;
+        }
+        @keyframes rgbFlicker { 0%, 100% { transform: translateX(-3px); } 50% { transform: translateX(3px); } }
+
+        #noise {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 53; opacity: 0.09;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        }
+
+        #minimap {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 120px; height: 90px;
+            background: rgba(0, 0, 0, 0.9); border: 3px solid #4a4a4a;
+            z-index: 60; image-rendering: pixelated;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        #hud {
+            position: absolute; top: 15px; left: 15px;
+            display: flex; flex-direction: column; gap: 8px;
+            z-index: 60; font-family: 'VT323', monospace;
+        }
+        .hud-item {
+            background: rgba(0, 0, 0, 0.85); border: 2px solid #4a4a4a;
+            padding: 6px 14px; font-size: 18px; color: #fff;
+            text-shadow: 2px 2px 0px #000; letter-spacing: 2px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.6);
+            display: flex; align-items: center; gap: 10px;
+        }
+        #batteryBar {
+            width: 120px; height: 14px; background: #1a1a1a;
+            border: 2px solid #4a4a4a; margin-top: 4px;
+        }
+        #batteryFill {
+            height: 100%; background: linear-gradient(90deg, #8b0000, #cc0000, #ff6600, #ffcc00, #00cc00);
+            image-rendering: pixelated; transition: width 0.2s;
+        }
+        #turboText {
+            font-size: 16px; color: #00ffff; text-shadow: 0 0 10px #00ffff;
+            opacity: 0; transition: opacity 0.2s;
+        }
+        #turboText.active { opacity: 1; animation: pulseTurbo 0.4s infinite alternate; }
+        @keyframes pulseTurbo { from { transform: scale(1); } to { transform: scale(1.08); } }
+
+        /* MOBILE CONTROLS */
+        #mobileControls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            height: 180px;
+            z-index: 70;
+            display: none;
+            pointer-events: none;
+        }
+        
+        #mobileControls.active {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 0 20px 20px;
+        }
+
+        /* Virtual Joystick */
+        #joystick {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            pointer-events: auto;
+            touch-action: none;
+        }
+
+        #joystickKnob {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 100, 100, 0.6);
+            border: 2px solid rgba(255, 200, 200, 0.8);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 20px rgba(255, 0, 0, 0.5);
+        }
+
+        /* Action Buttons */
+        #actionButtons {
+            display: flex;
+            gap: 15px;
+            pointer-events: auto;
+        }
+
+        .actionBtn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: 3px solid rgba(255, 255, 255, 0.5);
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-family: 'VT323', monospace;
+            font-size: 14px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            touch-action: none;
+            transition: all 0.1s;
+        }
+
+        .actionBtn:active, .actionBtn.active {
+            background: rgba(255, 0, 0, 0.6);
+            transform: scale(0.95);
+            border-color: #ff0000;
+        }
+
+        #btnFlashlight {
+            background: rgba(255, 200, 0, 0.4);
+        }
+        #btnFlashlight.active {
+            background: rgba(255, 200, 0, 0.8);
+        }
+
+        #btnTurbo {
+            background: rgba(0, 200, 255, 0.4);
+        }
+        #btnTurbo.active {
+            background: rgba(0, 200, 255, 0.8);
+        }
+
+        .btnLabel {
+            font-size: 10px;
+            opacity: 0.8;
+            margin-top: 2px;
+        }
+
+        /* Screens */
+        .screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(5, 5, 5, 0.97);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 100; text-align: center; font-family: 'VT323', monospace;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .logo-container {
+            position: relative; width: 250px; height: 250px; margin-bottom: 20px;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .logo-img {
+            width: 100%; height: 100%; object-fit: contain;
+            filter: drop-shadow(0 0 20px rgba(255, 0, 0, 0.6)) brightness(1.2);
+            animation: logoPulse 4s ease-in-out infinite;
+        }
+        @keyframes logoPulse {
+            0%, 100% { filter: drop-shadow(0 0 20px rgba(255, 0, 0, 0.6)) brightness(1.2); transform: scale(1); }
+            50% { filter: drop-shadow(0 0 40px rgba(255, 0, 0, 0.9)) brightness(1.4); transform: scale(1.03); }
+        }
+
+        .screen h1 {
+            font-family: 'VT323', monospace; font-size: 48px; color: #8b0000;
+            text-shadow: 4px 4px 0px #330000, 0 0 30px #ff0000, 0 0 60px #8b0000;
+            margin: 0; letter-spacing: 4px; animation: ps2TitlePulse 2s infinite;
+            position: relative; z-index: 2;
+        }
+        @keyframes ps2TitlePulse {
+            0%, 100% { text-shadow: 4px 4px 0px #330000, 0 0 30px #ff0000; }
+            50% { text-shadow: 4px 4px 0px #330000, 0 0 50px #ff0000, 0 0 80px #ff0000; }
+        }
+        .subtitle { font-size: 18px; color: #888; margin-bottom: 20px; letter-spacing: 3px; text-transform: uppercase; position: relative; z-index: 2;}
+        .screen p { font-size: 16px; color: #aaa; margin-bottom: 10px; max-width: 600px; line-height: 1.4; text-shadow: 1px 1px 0 #000; position: relative; z-index: 2;}
+        
+        .btn {
+            padding: 12px 40px; font-family: 'VT323', monospace; font-size: 24px;
+            background: linear-gradient(180deg, #4a4a4a 0%, #2a2a2a 100%);
+            color: #fff; border: 3px solid #666; cursor: pointer; margin-top: 15px;
+            transition: all 0.2s; text-shadow: 2px 2px 0 #000; letter-spacing: 2px;
+            box-shadow: 0 6px 0 #1a1a1a, 0 8px 20px rgba(0,0,0,0.8); position: relative; z-index: 2;
+        }
+        .btn:hover { background: linear-gradient(180deg, #5a5a5a 0%, #3a3a3a 100%); transform: translateY(2px); border-color: #888; }
+        .btn:active { transform: translateY(6px); box-shadow: 0 0 0 #1a1a1a; }
+        
+        .diff-btn {
+            padding: 10px 20px; font-family: 'VT323', monospace; font-size: 18px;
+            background: #222; color: #888; border: 2px solid #444; cursor: pointer; margin: 0 5px; position: relative; z-index: 2;
+        }
+        .diff-btn.selected { background: #500; color: #fff; border-color: #f00; box-shadow: 0 0 15px rgba(255,0,0,0.4); }
+        
+        .hidden { display: none !important; }
+
+        #jumpscare {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; display: none; justify-content: center; align-items: center;
+            z-index: 200; overflow: hidden;
+        }
+        #jumpscare.active { display: flex; animation: ps2Jumpscare 0.6s ease-out; }
+        @keyframes ps2Jumpscare {
+            0% { transform: scale(0.2); filter: brightness(0.3); }
+            20% { transform: scale(1.4) rotate(-10deg); filter: brightness(2.5) contrast(2); }
+            50% { transform: scale(1) rotate(5deg); }
+            100% { transform: scale(1); }
+        }
+        #jumpscare .ghost-face { font-size: 200px; filter: drop-shadow(0 0 60px #ff0000); animation: ghostGlitch 0.12s infinite; }
+        @keyframes ghostGlitch {
+            0%, 100% { transform: translate(0, 0); }
+            25% { transform: translate(-10px, 10px); }
+            50% { transform: translate(10px, -10px); }
+            75% { transform: translate(-6px, -6px); }
+        }
+        #jumpscareText {
+            position: absolute; bottom: 100px; font-family: 'VT323', monospace;
+            font-size: 48px; color: #ff0000; text-shadow: 0 0 20px #ff0000;
+            animation: jsTextGlitch 0.08s infinite; letter-spacing: 4px;
+        }
+        @keyframes jsTextGlitch { 0%, 100% { opacity: 1; transform: translateX(0); } 50% { opacity: 0.6; transform: translateX(-6px); } }
+
+        #message {
+            position: absolute; bottom: 220px; left: 50%; transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9); border: 3px solid #4a4a4a;
+            padding: 12px 35px; font-size: 20px; color: #ff6666;
+            z-index: 70; opacity: 0; transition: opacity 0.3s; pointer-events: none;
+            text-shadow: 2px 2px 0 #000; letter-spacing: 2px;
+            text-align: center;
+            max-width: 90%;
+        }
+
+        .controls-hint {
+            position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
+            font-size: 14px; color: #555; z-index: 60; text-align: center; letter-spacing: 1px;
+            max-width: 90%;
+        }
+
+        #musicToggle {
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.85); border: 2px solid #4a4a4a;
+            padding: 8px 20px; cursor: pointer; z-index: 65;
+            font-family: 'VT323', monospace; font-size: 16px; color: #fff; letter-spacing: 2px;
+        }
+
+        .ps2-logo {
+            position: absolute; bottom: 20px; right: 20px;
+            font-size: 12px; color: #444; letter-spacing: 2px; z-index: 55; opacity: 0.6;
+        }
+
+        .sponsor-logos {
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            gap: 10px;
+            margin-top: 15px; 
+            position: relative; 
+            z-index: 2;
+            flex-wrap: wrap;
+            max-width: 90%;
+        }
+
+        .sponsor-logos img {
+            height: 40px; 
+            width: auto; 
+            filter: grayscale(100%) sepia(100%) hue-rotate(-50deg) saturate(300%) contrast(1.2);
+            transition: all 0.3s ease; 
+            opacity: 0.8;
+            border: 1px solid rgba(139, 0, 0, 0.3);
+            background: rgba(0,0,0,0.5);
+            padding: 2px;
+        }
+
+        .sponsor-logos img:hover { 
+            filter: grayscale(0%) sepia(0%) hue-rotate(0deg);
+            opacity: 1; 
+            transform: scale(1.15); 
+            border-color: #ff0000;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.6);
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .screen h1 { font-size: 36px; }
+            .logo-container { width: 200px; height: 200px; }
+            #minimap { width: 100px; height: 75px; bottom: 210px; right: 10px; }
+            .hud-item { font-size: 14px; padding: 4px 10px; }
+            #batteryBar { width: 100px; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <canvas id="bufferCanvas" width="320" height="240"></canvas>
+    <canvas id="gameCanvas" width="1024" height="700"></canvas>
+    
+    <div id="scanlines"></div>
+    <div id="crtOverlay"></div>
+    <div id="rgbShift"></div>
+    <div id="noise"></div>
+    
+    <canvas id="minimap" width="160" height="120"></canvas>
+
+    <div id="hud" class="hidden">
+        <div class="hud-item">
+            <span style="color:#ffd700">🔦</span>
+            <span>SENTER: <span id="batteryText">100%</span></span>
+            <div id="batteryBar"><div id="batteryFill" style="width: 100%"></div></div>
+        </div>
+        <div class="hud-item">ARTEFAK: <span id="treasureCount">0</span>/5</div>
+        <div class="hud-item">SANITY: <span id="sanityText">100</span>%</div>
+        <div id="turboText">⚡ TURBO</div>
+    </div>
+
+    <!-- MOBILE CONTROLS -->
+    <div id="mobileControls">
+        <div id="joystick">
+            <div id="joystickKnob"></div>
+        </div>
+        <div id="actionButtons">
+            <div class="actionBtn" id="btnFlashlight" ontouchstart="toggleFlashlight(event)" onmousedown="toggleFlashlight(event)">
+                🔦
+                <span class="btnLabel">SENTER</span>
+            </div>
+            <div class="actionBtn" id="btnTurbo" ontouchstart="setTurbo(event, true)" ontouchend="setTurbo(event, false)" onmousedown="setTurbo(event, true)" onmouseup="setTurbo(event, false)">
+                ⚡
+                <span class="btnLabel">TURBO</span>
+            </div>
+        </div>
+    </div>
+
+    <button id="musicToggle" onclick="toggleMusic()">[ MUSIK: ON ]</button>
+    <div id="message"></div>
+    <div class="controls-hint hidden" id="controlsHint">
+        Desktop: [WASD] Gerak | [MOUSE] Arah | [F] Senter | [SHIFT] Turbo<br>
+        Mobile: Gunakan joystick & tombol di bawah
+    </div>
+
+    <!-- Start Screen -->
+    <div id="startScreen" class="screen">
+        <div class="logo-container">
+            <img src="https://i.imgur.com/8Qj8k5l.png" alt="Logo Mata Merah" class="logo-img" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0NSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZjAwIiBzdHJva2Utd2lkdGg9IjMiLz48Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSIxNSIgZmlsbD0iI2YwMCIvPjwvc3ZnPg=='">
+        </div>
+        
+        <h1>GEMA KEGELAPAN</h1>
+        <div class="subtitle">PS2 HORROR EDITION</div>
+        
+        <p style="color: #ff6666; font-size: 20px; margin: 10px 0;">MANSION ANGKER MENANTIMU...</p>
+        
+        <p>Temukan <b style="color: #ffd700;">5 Artefak</b> di mansion gelap.<br>
+        Hindari <b style="color: #ff0000;">Pocong, Kuntilanak & Genderuwo</b>.<br>
+        Baterai terbatas. Gunakan Turbo dengan bijak.</p>
+        
+        <div style="margin: 20px 0;">
+            <button class="diff-btn selected" onclick="setDifficulty('easy', this)">MUDAH</button>
+            <button class="diff-btn" onclick="setDifficulty('normal', this)">NORMAL</button>
+            <button class="diff-btn" onclick="setDifficulty('hard', this)">SULIT</button>
+        </div>
+
+        <button class="btn" onclick="startGame()">[ MULAI GAME ]</button>
+
+        <div class="sponsor-logos">
+            <img src="2.jpeg" alt="HAN" title="HAN Fishing" onerror="this.style.display='none'">
+            <img src="3.jpeg" alt="MOKO" title="MOKO Game Dev" onerror="this.style.display='none'">
+            <img src="lgo.jpeg" alt="RPL" title="RPL Shield" onerror="this.style.display='none'">
+            <img src="RPL.jpeg" alt="OneSand" title="One Sanden Vocational School" onerror="this.style.display='none'">
+            <img src="ward.webp" alt="SMKN 1" title="SMKN 1 Sanden Bantul" onerror="this.style.display='none'">
+        </div>
+
+        <div class="ps2-logo">PLAYSTATION 2 STYLE</div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="gameOverScreen" class="screen hidden">
+        <h1 style="color: #ff0000; font-size: 60px;">GAME OVER</h1>
+        <p id="deathMessage" style="color: #ff6666; font-size: 24px; margin: 20px 0;">Hantu menangkapmu...</p>
+        <p style="margin-top: 25px; font-size: 20px;">ARTEFAK: <span id="finalTreasure" style="color: #ffd700; font-size: 28px;">0</span>/5</p>
+        <button class="btn" onclick="resetGame()">[ COBA LAGI ]</button>
+    </div>
+
+    <!-- Win Screen -->
+    <div id="winScreen" class="screen hidden">
+        <h1 style="color: #ffd700; font-size: 48px;">SELAMAT!</h1>
+        <div class="subtitle" style="color: #00ff00;">KAMU BERHASIL KABUR!</div>
+        <p style="margin-top: 25px; font-size: 18px;">SISA SANITY: <span id="winSanity" style="color: #ff6666; font-size: 24px;">100</span>%<br>SISA BATERAI: <span id="winBattery" style="color: #00ff00; font-size: 24px;">100%</span></p>
+        <button class="btn" onclick="resetGame()">[ MAIN LAGI ]</button>
+    </div>
+
+    <!-- Jumpscare -->
+    <div id="jumpscare">
+        <div class="ghost-face">👹</div>
+        <div id="jumpscareText">DAPAT!</div>
+    </div>
+</div>
+
+<script>
+/**
+ * GEMA KEGELAPAN - MOBILE COMPATIBLE VERSION
+ */
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const bufferCanvas = document.getElementById('bufferCanvas');
+const bufferCtx = bufferCanvas.getContext('2d');
+const minimap = document.getElementById('minimap');
+const miniCtx = minimap.getContext('2d');
+
+// PS2 Low-Res Buffer
+const W = 320; const H = 240;
+ctx.imageSmoothingEnabled = false;
+bufferCtx.imageSmoothingEnabled = false;
+
+// Detect mobile
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+// --- AUDIO SYSTEM ---
+let audioCtx, musicOscillators = [], isMusicPlaying = false, heartbeatInterval;
+
+function initAudio() { 
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
+    if (audioCtx.state === 'suspended') audioCtx.resume(); 
+}
+
+function playSound(type) {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator(); 
+    const gain = audioCtx.createGain();
+    osc.connect(gain); 
+    gain.connect(audioCtx.destination); 
+    const now = audioCtx.currentTime;
+
+    switch(type) {
+        case 'step':
+            osc.type = 'triangle'; 
+            osc.frequency.setValueAtTime(100 + Math.random()*50, now);
+            gain.gain.setValueAtTime(0.05, now); 
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+            osc.start(now); osc.stop(now + 0.08);
+            break;
+        case 'run':
+            osc.type = 'square'; 
+            osc.frequency.setValueAtTime(80, now);
+            gain.gain.setValueAtTime(0.07, now); 
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+            osc.start(now); osc.stop(now + 0.08);
+            break;
+        case 'heartbeat':
+            osc.type = 'sine'; 
+            osc.frequency.setValueAtTime(50, now); 
+            osc.frequency.exponentialRampToValueAtTime(30, now + 0.15);
+            gain.gain.setValueAtTime(0.2, now); 
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            osc.start(now); osc.stop(now + 0.2);
+            break;
+        case 'collect':
+            [500, 650, 800, 1000].forEach((f, i) => {
+                const o = audioCtx.createOscillator(); 
+                const g = audioCtx.createGain();
+                o.type = 'square'; o.frequency.value = f;
+                g.gain.setValueAtTime(0.07, now + i*0.08); 
+                g.gain.exponentialRampToValueAtTime(0.01, now + i*0.08 + 0.2);
+                o.connect(g); g.connect(audioCtx.destination); 
+                o.start(now + i*0.08); o.stop(now + i*0.08 + 0.2);
+            });
+            break;
+        case 'battery_pickup':
+            osc.type = 'square'; 
+            osc.frequency.setValueAtTime(300, now); 
+            osc.frequency.linearRampToValueAtTime(700, now + 0.2);
+            gain.gain.setValueAtTime(0.07, now); 
+            gain.gain.linearRampToValueAtTime(0, now + 0.3);
+            osc.start(now); osc.stop(now + 0.3);
+            break;
+        case 'low_battery':
+            osc.type = 'sawtooth'; 
+            osc.frequency.setValueAtTime(120, now);
+            gain.gain.setValueAtTime(0.04, now); 
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.start(now); osc.stop(now + 0.1);
+            break;
+        case 'scare':
+            osc.type = 'sawtooth'; 
+            osc.frequency.setValueAtTime(80, now); 
+            osc.frequency.linearRampToValueAtTime(30, now + 0.6);
+            gain.gain.setValueAtTime(0.4, now); 
+            gain.gain.linearRampToValueAtTime(0, now + 0.6);
+            osc.start(now); osc.stop(now + 0.6);
+            break;
+        case 'jumpscare':
+            const j = audioCtx.createOscillator(); 
+            const g = audioCtx.createGain();
+            j.type = 'sawtooth'; 
+            j.frequency.setValueAtTime(60, now); 
+            j.frequency.linearRampToValueAtTime(1000, now + 0.15);
+            g.gain.setValueAtTime(0.6, now); 
+            g.gain.linearRampToValueAtTime(0, now + 0.7);
+            j.connect(g); g.connect(audioCtx.destination); 
+            j.start(now); j.stop(now + 0.7);
+            break;
+    }
+}
+
+function startHorrorMusic() {
+    if (!audioCtx || isMusicPlaying) return; 
+    isMusicPlaying = true;
+    
+    const droneFreqs = [55, 110, 165];
+    const mg = audioCtx.createGain(); 
+    mg.gain.value = 0.1; 
+    mg.connect(audioCtx.destination);
+    
+    droneFreqs.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator(); 
+        osc.type = 'sawtooth'; 
+        osc.frequency.value = freq;
+        osc.detune.value = (Math.random()-0.5)*15; 
+        const g = audioCtx.createGain(); 
+        g.gain.value = 0.15/(i+1);
+        osc.connect(g); g.connect(mg); 
+        osc.start(); 
+        musicOscillators.push(osc);
+    });
+
+    function playStab() {
+        if(!isMusicPlaying) return;
+        const osc = audioCtx.createOscillator(); 
+        const gain = audioCtx.createGain();
+        osc.type = Math.random() > 0.5 ? 'sawtooth' : 'square';
+        osc.frequency.value = [110, 117, 131, 147][Math.floor(Math.random()*4)] * (Math.random()>0.7?2:1);
+        
+        const filter = audioCtx.createBiquadFilter(); 
+        filter.type = 'lowpass'; 
+        filter.frequency.value = 1500 + Math.random()*1000;
+        
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.05, audioCtx.currentTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 2.5);
+        
+        osc.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(); osc.stop(audioCtx.currentTime + 2.5);
+        
+        setTimeout(playStab, Math.random()*5000 + 4000);
+    }
+    playStab();
+}
+
+function stopHorrorMusic() { 
+    isMusicPlaying = false; 
+    musicOscillators.forEach(o => { try{o.stop();} catch(e){} }); 
+    musicOscillators = []; 
+    clearInterval(heartbeatInterval);
+}
+
+function toggleMusic() { 
+    if(isMusicPlaying) {
+        stopHorrorMusic();
+        document.getElementById('musicToggle').innerText = '[ MUSIK: OFF ]';
+    } else {
+        startHorrorMusic();
+        document.getElementById('musicToggle').innerText = '[ MUSIK: ON ]';
+    }
+}
+
+function updateHeartbeat(sanity) {
+    if (!isMusicPlaying) return;
+    clearInterval(heartbeatInterval);
+    
+    let bpm = 60 + (100 - sanity) * 1.5; 
+    if (bpm > 180) bpm = 180;
+    
+    const intervalMs = 60000 / bpm;
+    
+    heartbeatInterval = setInterval(() => {
+        if(gameState === 'PLAYING' && sanity < 80) {
+            playSound('heartbeat');
+        }
+    }, intervalMs);
+}
+
+// --- GAME STATE ---
+let gameState = 'MENU';
+let keys = {}; 
+let mouse = { x: W/2, y: H/2 };
+let difficulty = 'easy';
+const diffSettings = {
+    easy: { ghostSpeed: 1.0, batDrain: 0.04, sanityDrainDark: 0.12, totalBats: 12 },
+    normal: { ghostSpeed: 1.6, batDrain: 0.06, sanityDrainDark: 0.18, totalBats: 9 },
+    hard: { ghostSpeed: 2.3, batDrain: 0.09, sanityDrainDark: 0.28, totalBats: 6 }
+};
+
+const player = { x: 100, y: 100, size: 12, speed: 2.5, angle: 0, flashlightOn: true, battery: 100, sanity: 100, walkFrame: 0, isRunning: false };
+const mapSize = 2400; const tileSize = 20;
+let camera = { x: 0, y: 0 };
+let walls = []; let artifacts = []; let batteries = []; let ghosts = [];
+
+// Mobile controls state
+let joystickData = { active: false, dx: 0, dy: 0, originX: 0, originY: 0 };
+
+function setDifficulty(level, btn) {
+    difficulty = level;
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+}
+
+function generateMap() {
+    walls = []; artifacts = []; batteries = []; ghosts = [];
+    const settings = diffSettings[difficulty];
+    
+    for(let x=0; x<mapSize/tileSize; x++) { walls.push({x:x*tileSize, y:0, w:tileSize, h:tileSize}); walls.push({x:x*tileSize, y:(mapSize/tileSize-1)*tileSize, w:tileSize, h:tileSize}); }
+    for(let y=0; y<mapSize/tileSize; y++) { walls.push({x:0, y:y*tileSize, w:tileSize, h:tileSize}); walls.push({x:(mapSize/tileSize-1)*tileSize, y:y*tileSize, w:tileSize, h:tileSize}); }
+
+    for(let i=0; i<55; i++) {
+        let rx = Math.floor(Math.random()*(mapSize/tileSize-8)+4)*tileSize;
+        let ry = Math.floor(Math.random()*(mapSize/tileSize-8)+4)*tileSize;
+        let rw = (Math.floor(Math.random()*6+3))*tileSize;
+        let rh = (Math.floor(Math.random()*6+3))*tileSize;
+        walls.push({x:rx, y:ry, w:rw, h:rh});
+    }
+
+    let ac=0; while(ac<5){let ax=Math.random()*(mapSize-100)+50,ay=Math.random()*(mapSize-100)+50;if(!checkWall(ax,ay,20)){artifacts.push({x:ax,y:ay,collected:false,fo:Math.random()*Math.PI});ac++;}}
+    
+    let bc=0; while(bc<settings.totalBats){let bx=Math.random()*(mapSize-100)+50,by=Math.random()*(mapSize-100)+50;if(!checkWall(bx,by,15)&&Math.hypot(bx-100,by-100)>200){batteries.push({x:bx,y:by,collected:false,pulse:Math.random()*Math.PI});bc++;}}
+
+    const types=['pocong','kuntilanak','genderuwo'];
+    for(let i=0;i<3;i++){
+        let gx,gy; do{gx=Math.random()*(mapSize-200)+100;gy=Math.random()*(mapSize-200)+100;}while(checkWall(gx,gy,30)||Math.hypot(gx-100,gy-100)<400);
+        ghosts.push({x:gx,y:gy,type:types[i],speed:settings.ghostSpeed*(0.8+Math.random()*0.4),size:18,angle:0,state:'patrol',patrolTimer:0,jf:0,hs:0});
+    }
+}
+
+function checkWall(x,y,s){
+    for(let w of walls){if(x+s>w.x&&x-s<w.x+w.w&&y+s>w.y&&y-s<w.y+w.h)return true;}return false;
+}
+
+// Keyboard events
+document.addEventListener('keydown', e=>{keys[e.key.toLowerCase()]=true;if(e.key.toLowerCase()==='f'&&gameState==='PLAYING')player.flashlightOn=!player.flashlightOn;});
+document.addEventListener('keyup', e=>keys[e.key.toLowerCase()]=false);
+
+// Mouse events for desktop
+canvas.addEventListener('mousemove', e=>{const r=canvas.getBoundingClientRect();mouse.x=(e.clientX-r.left)*(W/r.width)+camera.x;mouse.y=(e.clientY-r.top)*(H/r.height)+camera.y;});
+
+// Mobile joystick setup
+const joystick = document.getElementById('joystick');
+const joystickKnob = document.getElementById('joystickKnob');
+
+if (isMobile) {
+    document.getElementById('mobileControls').classList.add('active');
+    
+    joystick.addEventListener('touchstart', handleJoystickStart, {passive: false});
+    joystick.addEventListener('touchmove', handleJoystickMove, {passive: false});
+    joystick.addEventListener('touchend', handleJoystickEnd, {passive: false});
+}
+
+function handleJoystickStart(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = joystick.getBoundingClientRect();
+    joystickData.active = true;
+    joystickData.originX = rect.left + rect.width/2;
+    joystickData.originY = rect.top + rect.height/2;
+    updateJoystick(touch.clientX, touch.clientY);
+}
+
+function handleJoystickMove(e) {
+    e.preventDefault();
+    if (!joystickData.active) return;
+    const touch = e.touches[0];
+    updateJoystick(touch.clientX, touch.clientY);
+}
+
+function handleJoystickEnd(e) {
+    e.preventDefault();
+    joystickData.active = false;
+    joystickData.dx = 0;
+    joystickData.dy = 0;
+    joystickKnob.style.transform = `translate(-50%, -50%)`;
+}
+
+function updateJoystick(clientX, clientY) {
+    const maxDist = 35;
+    let dx = clientX - joystickData.originX;
+    let dy = clientY - joystickData.originY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    
+    if (dist > maxDist) {
+        dx = (dx/dist) * maxDist;
+        dy = (dy/dist) * maxDist;
+    }
+    
+    joystickKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+    
+    // Normalize for game input (-1 to 1)
+    joystickData.dx = dx / maxDist;
+    joystickData.dy = dy / maxDist;
+}
+
+// Mobile button functions
+function toggleFlashlight(e) {
+    e.preventDefault();
+    if (gameState === 'PLAYING') {
+        player.flashlightOn = !player.flashlightOn;
+        const btn = document.getElementById('btnFlashlight');
+        if (player.flashlightOn) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    }
+}
+
+function setTurbo(e, active) {
+    e.preventDefault();
+    if (gameState === 'PLAYING') {
+        const btn = document.getElementById('btnTurbo');
+        if (active) {
+            btn.classList.add('active');
+            keys['shift'] = true;
+        } else {
+            btn.classList.remove('active');
+            keys['shift'] = false;
+        }
+    }
+}
+
+// Prevent scrolling on mobile
+document.addEventListener('touchmove', function(e) {
+    if (e.target.closest('#gameContainer')) {
+        e.preventDefault();
+    }
+}, { passive: false });
+
+function update() {
+    if(gameState!=='PLAYING') return;
+    const s=diffSettings[difficulty];
+
+    let dx=0,dy=0,moving=false;
+    
+    // Handle joystick input for mobile
+    if (isMobile && joystickData.active) {
+        dx = joystickData.dx * (keys['shift'] ? player.speed*1.8 : player.speed);
+        dy = joystickData.dy * (keys['shift'] ? player.speed*1.8 : player.speed);
+        if (Math.abs(joystickData.dx) > 0.1 || Math.abs(joystickData.dy) > 0.1) {
+            moving = true;
+        }
+    } else {
+        // Desktop keyboard input
+        player.isRunning=keys['shift']&&player.battery>5;
+        const spd=player.isRunning?player.speed*1.8:player.speed;
+        if(keys['w']||keys['arrowup']){dy-=spd;moving=true;}
+        if(keys['s']||keys['arrowdown']){dy+=spd;moving=true;}
+        if(keys['a']||keys['arrowleft']){dx-=spd;moving=true;}
+        if(keys['d']||keys['arrowright']){dx+=spd;moving=true;}
+    }
+
+    if(moving){
+        if(!checkWall(player.x+dx,player.y,player.size))player.x+=dx;
+        if(!checkWall(player.x,player.y+dy,player.size))player.y+=dy;
+        player.walkFrame+=player.isRunning?0.4:0.2;
+        if(Math.random()<(player.isRunning?0.15:0.06))playSound(player.isRunning?'run':'step');
+    }else{player.walkFrame=0;}
+
+    document.getElementById('turboText').className=(player.isRunning || (isMobile && keys['shift']))?'active':'';
+
+    // Update angle based on joystick direction or mouse
+    if (isMobile && joystickData.active) {
+        player.angle = Math.atan2(joystickData.dy, joystickData.dx);
+    } else {
+        player.angle=Math.atan2(mouse.y-player.y,mouse.x-player.x);
+    }
+    
+    camera.x+=(player.x-W/2-camera.x)*0.1;camera.y+=(player.y-H/2-camera.y)*0.1;
+    camera.x=Math.max(0,Math.min(camera.x,mapSize-W));camera.y=Math.max(0,Math.min(camera.y,mapSize-H));
+
+    if(player.flashlightOn){player.battery-=s.batDrain*(player.isRunning?3:1);if(player.battery<=0){player.battery=0;player.flashlightOn=false;showMessage("⚠ BATERAI HABIS!");playSound('low_battery');}if(player.battery<15&&Math.random()<0.04)playSound('low_battery');}
+
+    let isLit=player.flashlightOn&&player.battery>0;
+    player.sanity-=isLit?0.03:s.sanityDrainDark;
+    
+    updateHeartbeat(player.sanity);
+
+    if(player.sanity<=0){player.sanity=0;gameOver("Kewarasanmu habis...");}
+
+    artifacts.forEach(a=>{if(!a.collected&&Math.hypot(player.x-a.x,player.y-a.y)<25){a.collected=true;playSound('collect');updateScore();player.sanity=Math.min(100,player.sanity+30);showMessage("✨ ARTEFAK! (+30 SANITY)");if(artifacts.every(x=>x.collected))setTimeout(winGame,800);}a.fo+=0.06;});
+    batteries.forEach(b=>{if(!b.collected&&Math.hypot(player.x-b.x,player.y-b.y)<22){b.collected=true;playSound('battery_pickup');player.battery=Math.min(100,player.battery+40+Math.random()*30);showMessage("🔋 BATERAI DIAMBIL!");}b.pulse+=0.1;});
+
+    ghosts.forEach(g=>{
+        let d=Math.hypot(player.x-g.x,player.y-g.y);
+        let cr=player.isRunning?350:250;
+        if(d<cr||!isLit)g.state='chase';else{g.state='patrol';g.patrolTimer++;if(g.patrolTimer>100){g.pa=Math.random()*Math.PI*2;g.patrolTimer=0;}}
+        let ta=g.state==='chase'?Math.atan2(player.y-g.y,player.x-g.x):(g.pa||0);
+        let ms=g.state==='chase'?g.speed*1.4:g.speed*0.4;
+        let nx=g.x+Math.cos(ta)*ms,ny=g.y+Math.sin(ta)*ms;
+        if(!checkWall(nx,ny,g.size-3)){g.x=nx;g.y=ny;}else{g.pa=ta+Math.PI/2;}
+        g.angle=ta;
+        if(g.type==='pocong')g.jf+=0.15;if(g.type==='kuntilanak')g.hs+=0.05;
+        if(d<player.size+g.size-4){player.sanity-=20;playSound('scare');player.x+=Math.cos(g.angle)*50;player.y+=Math.sin(g.angle)*50;showMessage("💀 HANTU MENYENTUH! (-20 SANITY)");}
+    });
+
+    updateHUD();
+    if(player.sanity<25&&Math.random()<0.08){camera.x+=(Math.random()-0.5)*20;camera.y+=(Math.random()-0.5)*20;}
+}
+
+// Drawing functions (same as before)
+function drawPolyHuman(ctx,x,y,angle,wf,isRun){
+    ctx.save();ctx.translate(x,y);ctx.rotate(angle);
+    const ls=Math.sin(wf)*(isRun?6:4);
+    ctx.fillStyle='rgba(0,0,0,0.4)';ctx.beginPath();ctx.ellipse(0,6,10,6,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#111';
+    ctx.save();ctx.translate(-4,6);ctx.rotate(ls*0.12);ctx.fillRect(-3,0,6,10);ctx.restore();
+    ctx.save();ctx.translate(4,6);ctx.rotate(-ls*0.12);ctx.fillRect(-3,0,6,10);ctx.restore();
+    ctx.fillStyle='#2c3e50';ctx.fillRect(-8,-8,16,18);
+    ctx.fillStyle='#1a252f';ctx.fillRect(-1,-6,2,14);
+    ctx.fillStyle='#e0ac69';ctx.beginPath();ctx.arc(0,-14,8,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#0a0a0a';ctx.beginPath();ctx.arc(0,-16,8,Math.PI,Math.PI*2.2);ctx.fill();
+    ctx.fillStyle='#e0ac69';ctx.beginPath();ctx.arc(10,3,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#222';ctx.fillRect(12,-2,12,6);ctx.fillStyle='#444';ctx.fillRect(24,-3,4,8);
+    ctx.restore();
+}
+
+function drawPocongPS2(ctx,x,y,angle,jf){
+    ctx.save();ctx.translate(x,y);ctx.rotate(angle);
+    let bounce=Math.abs(Math.sin(jf))*12;ctx.translate(0,-bounce);
+    ctx.fillStyle='rgba(0,0,0,0.3)';ctx.beginPath();ctx.ellipse(0,bounce,12,6,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ddd';ctx.fillRect(-10,-22,20,40);
+    ctx.fillStyle='#bbb';ctx.fillRect(-8,-18,16,5);
+    ctx.fillStyle='#111';ctx.beginPath();ctx.arc(0,-6,6,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#f00';ctx.shadowColor='#f00';ctx.shadowBlur=8;
+    ctx.fillRect(-3,-8,2,2);ctx.fillRect(2,-8,2,2);ctx.shadowBlur=0;
+    ctx.restore();
+}
+
+function drawKuntilanakPS2(ctx,x,y,angle,hs){
+    ctx.save();ctx.translate(x,y);ctx.rotate(angle);
+    ctx.fillStyle='#f0f0f0';ctx.beginPath();ctx.moveTo(0,-28);ctx.lineTo(-12,18);ctx.lineTo(12,18);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#050505';ctx.beginPath();ctx.arc(0,-22,10,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.moveTo(-8,-22);ctx.quadraticCurveTo(-12+Math.sin(hs)*4,0,-6+Math.sin(hs+1)*2,14);ctx.lineTo(6+Math.sin(hs+1)*2,14);ctx.quadraticCurveTo(12+Math.sin(hs)*4,0,8,-22);ctx.fill();
+    ctx.fillStyle='#ccc';ctx.beginPath();ctx.ellipse(-15,0,3,10,0.4,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(15,0,3,10,-0.4,0,Math.PI*2);ctx.fill();
+    ctx.restore();
+}
+
+function drawGenderuwoPS2(ctx,x,y,angle){
+    ctx.save();ctx.translate(x,y);ctx.rotate(angle);
+    ctx.fillStyle='#3e2723';ctx.fillRect(-15,-22,30,40);
+    ctx.fillStyle='#2d1b18';for(let i=0;i<8;i++)ctx.fillRect(-12+Math.random()*24,-18+Math.random()*30,3,3);
+    ctx.fillStyle='#f00';ctx.shadowColor='#f00';ctx.shadowBlur=12;
+    ctx.beginPath();ctx.arc(-6,-8,3,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(6,-8,3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;
+    ctx.fillStyle='#000';ctx.beginPath();ctx.arc(0,3,5,0,Math.PI);ctx.fill();
+    ctx.restore();
+}
+
+function drawArtifactPS2(ctx,x,y,fy){
+    ctx.save();ctx.translate(x,y+fy);
+    ctx.fillStyle='#ffd700';ctx.shadowColor='#ffd700';ctx.shadowBlur=15;
+    ctx.beginPath();ctx.moveTo(0,-10);ctx.lineTo(8,0);ctx.lineTo(0,10);ctx.lineTo(-8,0);ctx.closePath();ctx.fill();
+    ctx.fillStyle='#fff';ctx.fillRect(-2,-3,4,4);ctx.shadowBlur=0;ctx.restore();
+}
+
+function drawBatteryPS2(ctx,x,y,pulse){
+    ctx.save();ctx.translate(x,y);let sc=1+Math.sin(pulse)*0.12;ctx.scale(sc,sc);
+    ctx.fillStyle='#f1c40f';ctx.strokeStyle='#a08000';ctx.lineWidth=2;
+    ctx.fillRect(-12,-10,24,20);ctx.strokeRect(-12,-10,24,20);
+    ctx.fillStyle='#2c3e50';ctx.font='bold 12px VT323';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText("⚡",0,1);
+    ctx.restore();
+}
+
+function drawWallPS2(ctx,x,y,w,h){
+    ctx.fillStyle='#2a2520';ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle='#151210';ctx.lineWidth=1;
+    for(let ly=y;ly<y+h;ly+=20){
+        let off=((ly-y)/20)%2===0?0:20;
+        for(let lx=x+off;lx<x+w;lx+=40){
+            ctx.fillStyle=((lx+ly)%40<20)?'#252018':'#2f2820';
+            ctx.fillRect(lx,ly,38,18);
+            ctx.strokeRect(lx,ly,38,18);
+        }
+    }
+    ctx.fillStyle='rgba(255,255,255,0.04)';ctx.fillRect(x,y,w,3);
+    ctx.fillStyle='rgba(0,0,0,0.3)';ctx.fillRect(x,y+h-3,w,3);
+}
+
+function drawFloorPS2(ctx,x,y){
+    ctx.fillStyle=((Math.floor(x/40)+Math.floor(y/40))%2===0)?'#1e1812':'#1a1510';
+    ctx.fillRect(x,y,40,40);
+    ctx.strokeStyle='#110e0b';ctx.lineWidth=1;ctx.strokeRect(x,y,40,40);
+    ctx.fillStyle='#15100c';ctx.fillRect(x+5,y+10,30,1);ctx.fillRect(x+8,y+25,24,1);
+}
+
+function drawMinimapPS2(){
+    const sc=160/mapSize;
+    miniCtx.fillStyle='#050505';miniCtx.fillRect(0,0,160,120);
+    miniCtx.fillStyle='#333';walls.forEach(w=>miniCtx.fillRect(w.x*sc,w.y*sc,Math.max(w.w*sc,1),Math.max(w.h*sc,1)));
+    miniCtx.fillStyle='#ffd700';artifacts.forEach(a=>{if(!a.collected)miniCtx.fillRect(a.x*sc-1,a.y*sc-1,3,3);});
+    miniCtx.fillStyle='#f1c40f';batteries.forEach(b=>{if(!b.collected)miniCtx.fillRect(b.x*sc-1,b.y*sc-1,3,3);});
+    miniCtx.fillStyle='#ff0000';ghosts.forEach(g=>miniCtx.fillRect(g.x*sc-2,g.y*sc-2,4,4));
+    miniCtx.fillStyle='#00ff00';miniCtx.fillRect(player.x*sc-2,player.y*sc-2,4,4);
+    miniCtx.strokeStyle='#555';miniCtx.lineWidth=2;miniCtx.strokeRect(0,0,160,120);
+}
+
+function draw() {
+    bufferCtx.fillStyle='#080604';bufferCtx.fillRect(0,0,W,H);
+
+    if(gameState==='PLAYING'){
+        let sx=Math.floor(camera.x/40)*40,sy=Math.floor(camera.y/40)*40;
+        for(let x=sx;x<camera.x+W+40;x+=40)for(let y=sy;y<camera.y+H+40;y+=40)drawFloorPS2(bufferCtx,x-camera.x,y-camera.y);
+
+        batteries.forEach(b=>{if(!b.collected)drawBatteryPS2(bufferCtx,b.x-camera.x,b.y-camera.y,b.pulse);});
+        artifacts.forEach(a=>{if(!a.collected)drawArtifactPS2(bufferCtx,a.x-camera.x,a.y-camera.y,Math.sin(a.fo)*4);});
+
+        drawPolyHuman(bufferCtx,player.x-camera.x,player.y-camera.y,player.angle,player.walkFrame,player.isRunning);
+
+        ghosts.forEach(g=>{
+            let gx=g.x-camera.x,gy=g.y-camera.y;
+            if(g.type==='pocong')drawPocongPS2(bufferCtx,gx,gy,g.angle,g.jf);
+            else if(g.type==='kuntilanak')drawKuntilanakPS2(bufferCtx,gx,gy,g.angle,g.hs);
+            else drawGenderuwoPS2(bufferCtx,gx,gy,g.angle);
+        });
+
+        walls.forEach(w=>{
+            let wx=w.x-camera.x,wy=w.y-camera.y;
+            if(wx+w.w>-20&&wx<W+20&&wy+w.h>-20&&wy<H+20)drawWallPS2(bufferCtx,wx,wy,w.w,w.h);
+        });
+
+        let dk=document.createElement('canvas');dk.width=W;dk.height=H;
+        let dc=dk.getContext('2d');
+        dc.fillStyle='rgba(0,0,0,0.97)';dc.fillRect(0,0,W,H);
+        dc.globalCompositeOperation='destination-out';
+        
+        let px=player.x-camera.x,py=player.y-camera.y;
+        let ag=dc.createRadialGradient(px,py+8,0,px,py+8,35);
+        ag.addColorStop(0,'rgba(255,255,255,0.1)');ag.addColorStop(1,'rgba(255,255,255,0)');
+        dc.fillStyle=ag;dc.beginPath();dc.arc(px,py+8,35,0,Math.PI*2);dc.fill();
+
+        if(player.flashlightOn&&player.battery>0){
+            let fl=1;
+            if(player.battery<15&&Math.random()>0.5)fl=0;
+            else if(player.battery<40&&Math.random()>0.85)fl=0.5;
+            if(fl>0){
+                dc.save();
+                let hx=px+Math.cos(player.angle)*15,hy=py+Math.sin(player.angle)*15;
+                dc.translate(hx,hy);dc.rotate(player.angle);
+                let cg=dc.createRadialGradient(0,0,0,0,0,280);
+                cg.addColorStop(0,`rgba(255,255,255,${fl})`);cg.addColorStop(0.3,`rgba(255,255,255,${fl*0.6})`);cg.addColorStop(1,'rgba(255,255,255,0)');
+                dc.fillStyle=cg;dc.beginPath();dc.moveTo(0,0);dc.arc(0,0,280,-0.4,0.4);dc.closePath();dc.fill();
+                dc.restore();
+            }
+        }
+        bufferCtx.drawImage(dk,0,0);
+    }
+
+    ctx.imageSmoothingEnabled=false;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(bufferCanvas,0,0,canvas.width,canvas.height);
+
+    drawMinimapPS2();
+}
+
+function loop(){update();draw();requestAnimationFrame(loop);}
+
+function updateHUD(){
+    document.getElementById('batteryText').innerText=Math.floor(player.battery)+'%';
+    document.getElementById('batteryFill').style.width=player.battery+'%';
+    document.getElementById('treasureCount').innerText=artifacts.filter(a=>a.collected).length;
+    document.getElementById('sanityText').innerText=Math.floor(player.sanity);
+}
+function showMessage(t){const m=document.getElementById('message');m.innerText=t;m.style.opacity=1;setTimeout(()=>m.style.opacity=0,2500);}
+function updateScore(){document.getElementById('treasureCount').innerText=artifacts.filter(a=>a.collected).length;}
+
+function startGame(){
+    initAudio();
+    startHorrorMusic();
+    document.getElementById('musicToggle').innerText = '[ MUSIK: ON ]';
+    
+    document.getElementById('startScreen').classList.add('hidden');
+    document.getElementById('hud').classList.remove('hidden');
+    document.getElementById('controlsHint').classList.remove('hidden');
+    if (isMobile) {
+        document.getElementById('mobileControls').classList.add('active');
+    }
+    generateMap();
+    player.x=100;player.y=100;player.sanity=100;player.battery=100;player.flashlightOn=true;
+    gameState='PLAYING';showMessage("TEMUKAN 5 ARTEFAK! HINDARI HANTU!");
+}
+function gameOver(r){gameState='GAMEOVER';playSound('jumpscare');stopHorrorMusic();document.getElementById('deathMessage').innerText=r;document.getElementById('finalTreasure').innerText=artifacts.filter(a=>a.collected).length;document.getElementById('gameOverScreen').classList.remove('hidden');}
+function winGame(){gameState='WIN';stopHorrorMusic();document.getElementById('winSanity').innerText=Math.floor(player.sanity);document.getElementById('winBattery').innerText=Math.floor(player.battery)+'%';document.getElementById('winScreen').classList.remove('hidden');}
+function resetGame(){stopHorrorMusic();document.getElementById('gameOverScreen').classList.add('hidden');document.getElementById('winScreen').classList.add('hidden');document.getElementById('startScreen').classList.remove('hidden');document.getElementById('hud').classList.add('hidden');document.getElementById('controlsHint').classList.add('hidden');document.getElementById('mobileControls').classList.remove('active');document.getElementById('musicToggle').innerText='[ MUSIK: ON ]';gameState='MENU';}
+
+loop();
+</script>
+</body>
+</html>
